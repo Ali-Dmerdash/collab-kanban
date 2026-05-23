@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -12,23 +7,143 @@ datasource db {
   provider = "postgresql"
 }
 
-// Starter models - replace with your own
-model Board {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tasks     Task[]
+enum UserRole {
+  MEMBER
+  ADMIN
 }
 
-model Task {
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships TeamMember[]
+  comments    Comment[]
+
+  ownedTeams    Team[]    @relation("TeamOwner")
+  projects      Project[] @relation("ProjectOwner")
+  assignedTasks Task[]    @relation("TaskAssignee")
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation("TeamOwner", fields: [ownerId], references: [id])
+
+  members  TeamMember[]
+  projects Project[]
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  teamId String
+  userId String
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role TeamRole @default(MEMBER)
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+model Project {
   id          String   @id @default(cuid())
-  title       String
+  name        String
+  slug        String
   description String?
-  done        Boolean  @default(false)
-  boardId     String
+  teamId      String
+  ownerId     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  team   Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner  User    @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  tasks  Task[]
+  labels Label[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+  @@index([ownerId])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  position    Int        @default(0)
+  projectId   String
+  assigneeId  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  comments Comment[]
+  labels   TaskLabel[]
+
+  @@index([projectId, status, position])
+  @@index([projectId, assigneeId, status])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([userId])
+}
+
+model Label {
+  id        Int         @id @default(autoincrement())
+  name      String
+  color     String
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     TaskLabel[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model TaskLabel {
+  taskId  String
+  labelId Int
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
 }
